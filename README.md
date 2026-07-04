@@ -19,5 +19,5 @@ A real-time web dashboard for monitoring SSH honeypot activity captured by [Cowr
 - Cowrie SSH honeypot (logs to `cowrie.json`)
 - [MaxMind GeoLite2-City](https://dev.maxmind.com/geoip/geolite2-free-geolocation-data) database (`.mmdb`)
 
-```bash
-pip install flask geoip2 requests
+<img width="2554" height="1258" alt="d312322824ee7e0c08728637d3ab31e8" src="https://github.com/user-attachments/assets/18bacb97-22b0-44dd-9092-2874690eaa6f" />
+
