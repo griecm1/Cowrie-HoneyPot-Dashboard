@@ -1,4 +1,4 @@
-# Cowrie-HoneyPot-Dashboard
+# Cowrie HoneyPot Dashboard
 
 A real-time web dashboard for monitoring SSH honeypot activity captured by [Cowrie](https://github.com/cowrie/cowrie). Displays live attack data including geographic origins, login attempts, commands executed, and network infrastructure.
 
