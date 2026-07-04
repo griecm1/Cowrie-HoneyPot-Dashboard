@@ -1,0 +1,323 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <title>Honeypot Dashboard</title>
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.css"/>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.9.4/leaflet.min.js"></script>
+    <style>
+        * { margin:0; padding:0; box-sizing:border-box; }
+        body { background:#080c14; color:#c9d1d9; font-family:Courier New,monospace; font-size:15px; }
+        .header { background:#0d1117; border-bottom:1px solid #ff444433; padding:14px 24px; display:flex; align-items:center; gap:10px; }
+        .live-dot { width:10px; height:10px; background:#ff4444; border-radius:50%; animation:pulse 1.5s infinite; flex-shrink:0; }
+        @keyframes pulse { 0%,100%{opacity:1;}50%{opacity:0.2;} }
+        .header h1 { font-size:1.1rem; color:#ff4444; letter-spacing:3px; font-weight:normal; }
+        .header-time { margin-left:auto; font-size:0.82rem; color:#444d56; }
+        .stats { display:grid; grid-template-columns:repeat(3,1fr); border-bottom:1px solid #ff444422; }
+        .stat { background:#0d1117; padding:22px 32px; border-right:1px solid #ff444422; }
+        .stat:last-child { border-right:none; }
+        .stat-num { font-size:2.8rem; font-weight:bold; line-height:1; }
+        .stat-num.red { color:#ff4444; }
+        .stat-num.amber { color:#f0a500; }
+        .stat-num.green { color:#3fb950; }
+        .stat-lbl { font-size:0.78rem; color:#586069; letter-spacing:1.5px; margin-top:4px; }
+        .main { display:grid; grid-template-columns:1fr 360px; border-bottom:1px solid #ff444422; }
+        #map { height:520px; }
+        .side { border-left:1px solid #ff444422; height:520px; display:grid; grid-template-rows:1fr 1fr; overflow:hidden; }
+        .panel { overflow:hidden; display:flex; flex-direction:column; min-height:0; }
+        .panel + .panel { border-top:1px solid #ff444422; }
+        .panel-hdr { padding:10px 16px; font-size:0.72rem; letter-spacing:2px; background:#0d1117; border-bottom:1px solid #ff444422; flex-shrink:0; }
+        .panel-hdr.red { color:#ff4444; }
+        .panel-hdr.green { color:#3fb950; }
+        .feed { overflow-y:auto; flex:1; min-height:0; }
+        .feed-item { display:grid; grid-template-columns:28px 1fr auto; align-items:center; gap:8px; padding:9px 16px; border-bottom:1px solid #ffffff07; }
+        .flag { font-size:1.2rem; }
+        .feed-ip { color:#ff6b6b; font-size:0.82rem; }
+        .feed-country { color:#586069; font-size:0.74rem; margin-top:2px; }
+        .feed-time { color:#2d333b; font-size:0.72rem; }
+        .cmd-item { padding:9px 16px; border-bottom:1px solid #ffffff07; }
+        .cmd-text { color:#3fb950; font-size:0.84rem; }
+        .cmd-meta { color:#444d56; font-size:0.72rem; margin-top:3px; }
+        .bottom-row { display:grid; grid-template-columns:repeat(3,1fr); border-top:1px solid #ff444422; }
+        .bot-panel { padding:20px 24px; border-right:1px solid #ff444422; }
+        .bot-panel:last-child { border-right:none; }
+        .bot-title { font-size:0.72rem; letter-spacing:2px; margin-bottom:14px; }
+        .bot-title.red { color:#ff4444; }
+        .bot-title.amber { color:#f0a500; }
+        .bot-title.blue { color:#58a6ff; }
+        .bot-title.green { color:#3fb950; }
+        .bot-inner { display:grid; grid-template-columns:1fr 1fr; gap:20px; align-items:start; }
+        .list-wrap { overflow-y:auto; max-height:220px; }
+        .list-item { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:6px 0; border-bottom:1px solid #ffffff07; }
+        .list-item:last-child { border-bottom:none; }
+        .list-label { font-size:0.82rem; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+        .list-label.red { color:#ff6b6b; }
+        .list-label.amber { color:#f0a500; }
+        .list-label.blue { color:#58a6ff; }
+        .list-label.green { color:#3fb950; }
+        .list-count { font-size:0.76rem; color:#586069; flex-shrink:0; }
+        .pie-section { display:flex; flex-direction:column; align-items:center; gap:10px; }
+        .pie-legend { width:100%; }
+        .legend-item { display:flex; align-items:center; gap:6px; padding:3px 0; font-size:0.72rem; }
+        .legend-dot { width:9px; height:9px; border-radius:50%; flex-shrink:0; }
+        .legend-label { color:#586069; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; flex:1; }
+        .legend-val { color:#444d56; flex-shrink:0; }
+        #chart-tip { position:fixed; display:none; background:#0d1117; border:1px solid #ff444444; color:#ff6b6b; font-family:Courier New,monospace; font-size:0.75rem; padding:5px 10px; pointer-events:none; z-index:9999; white-space:nowrap; }
+        ::-webkit-scrollbar { width:3px; }
+        ::-webkit-scrollbar-thumb { background:#ff444433; border-radius:2px; }
+        .leaflet-container { background:#0d1117 !important; }
+        .leaflet-popup-content-wrapper { background:#0d1117; border:1px solid #ff444433; border-radius:4px; box-shadow:none; }
+        .leaflet-popup-content { margin:0; }
+        .leaflet-popup-tip { background:#0d1117; }
+    </style>
+</head>
+<body>
+<div id="chart-tip"></div>
+<div class="header">
+    <div class="live-dot"></div>
+    <h1>HONEYPOT DASHBOARD</h1>
+    <div class="header-time" id="ts">--:--</div>
+</div>
+<div class="stats">
+    <div class="stat"><div class="stat-num red" id="s1">0</div><div class="stat-lbl">TOTAL CONNECTIONS</div></div>
+    <div class="stat"><div class="stat-num amber" id="s2">0</div><div class="stat-lbl">UNIQUE IPs</div></div>
+    <div class="stat"><div class="stat-num green" id="s3">0</div><div class="stat-lbl">COMMANDS EXECUTED</div></div>
+</div>
+<div class="main">
+    <div id="map"></div>
+    <div class="side">
+        <div class="panel">
+            <div class="panel-hdr red">RECENT ATTACKS</div>
+            <div class="feed" id="af"></div>
+        </div>
+        <div class="panel">
+            <div class="panel-hdr green">RECENT COMMANDS</div>
+            <div class="feed" id="cf"></div>
+        </div>
+    </div>
+</div>
+<div class="bottom-row">
+    <div class="bot-panel">
+        <div class="bot-title red">TOP USERNAMES</div>
+        <div class="bot-inner">
+            <div class="list-wrap" id="tu"></div>
+            <div class="pie-section">
+                <svg id="pie-u" viewBox="0 0 100 100" width="150" height="150" xmlns="http://www.w3.org/2000/svg"></svg>
+                <div class="pie-legend" id="leg-u"></div>
+            </div>
+        </div>
+    </div>
+    <div class="bot-panel">
+        <div class="bot-title amber">TOP PASSWORDS</div>
+        <div class="bot-inner">
+            <div class="list-wrap" id="tp"></div>
+            <div class="pie-section">
+                <svg id="pie-p" viewBox="0 0 100 100" width="150" height="150" xmlns="http://www.w3.org/2000/svg"></svg>
+                <div class="pie-legend" id="leg-p"></div>
+            </div>
+        </div>
+    </div>
+    <div class="bot-panel">
+        <div class="bot-title blue">ATTACKS BY COUNTRY</div>
+        <div class="bot-inner">
+            <div class="list-wrap" id="tc"></div>
+            <div class="pie-section">
+                <svg id="pie-c" viewBox="0 0 100 100" width="150" height="150" xmlns="http://www.w3.org/2000/svg"></svg>
+                <div class="pie-legend" id="leg-c"></div>
+            </div>
+        </div>
+    </div>
+</div>
+<div class="bottom-row">
+    <div class="bot-panel">
+        <div class="bot-title green">TOP COMMANDS</div>
+        <div class="bot-inner">
+            <div class="list-wrap" id="tcmd"></div>
+            <div class="pie-section">
+                <svg id="pie-cmd" viewBox="0 0 100 100" width="150" height="150" xmlns="http://www.w3.org/2000/svg"></svg>
+                <div class="pie-legend" id="leg-cmd"></div>
+            </div>
+        </div>
+    </div>
+    <div class="bot-panel">
+        <div class="bot-title blue">CONNECTIONS OVER TIME</div>
+        <svg id="line-cot" viewBox="0 0 480 160" width="100%" xmlns="http://www.w3.org/2000/svg"></svg>
+    </div>
+    <div class="bot-panel">
+        <div class="bot-title amber">TOP ASNs / ISPs</div>
+        <div class="bot-inner">
+            <div class="list-wrap" id="tasn"></div>
+            <div class="pie-section">
+                <svg id="pie-asn" viewBox="0 0 100 100" width="150" height="150" xmlns="http://www.w3.org/2000/svg"></svg>
+                <div class="pie-legend" id="leg-asn"></div>
+            </div>
+        </div>
+    </div>
+</div>
+<script>
+const map = L.map("map").setView([20,10],2);
+L.tileLayer("https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png",{subdomains:"abcd"}).addTo(map);
+const C=["#ff4444","#f0a500","#3fb950","#58a6ff","#bc8cff","#ff7b72","#ffa657","#79c0ff"];
+const tip=document.getElementById("chart-tip");
+
+function flag(code){
+    if(!code||code.length!==2)return"\u{1F310}";
+    return code.toUpperCase().split("").map(c=>String.fromCodePoint(c.charCodeAt(0)+127397)).join("");
+}
+function ft(ts){if(!ts)return"";return new Date(ts).toLocaleTimeString([],{hour:"2-digit",minute:"2-digit"});}
+
+function drawPie(svgId, legId, items){
+    const svg=document.getElementById(svgId);
+    const leg=document.getElementById(legId);
+    const pieItems=items.slice(0,5);
+    const total=pieItems.reduce((s,[,v])=>s+v,0);
+    if(!total){
+        svg.innerHTML='<text x="50" y="54" fill="#444" text-anchor="middle" font-size="8" font-family="Courier New">No data</text>';
+        leg.innerHTML="";
+        return;
+    }
+    const cx=50,cy=50,r=46;
+    let angle=-Math.PI/2,h="",lh="";
+    pieItems.forEach(([label,val],i)=>{
+        const slice=(val/total)*2*Math.PI;
+        const x1=cx+r*Math.cos(angle),y1=cy+r*Math.sin(angle);
+        angle+=slice;
+        const x2=cx+r*Math.cos(angle),y2=cy+r*Math.sin(angle);
+        const large=slice>Math.PI?1:0;
+        const col=C[i%C.length];
+        const pct=(val/total*100).toFixed(1);
+        h+='<path d="M'+cx+','+cy+' L'+x1.toFixed(2)+','+y1.toFixed(2)+' A'+r+','+r+' 0 '+large+',1 '+x2.toFixed(2)+','+y2.toFixed(2)+' Z" fill="'+col+'" stroke="#080c14" stroke-width="1.5" style="cursor:pointer" data-label="'+label+'" data-val="'+val+'" data-pct="'+pct+'"/>';
+        lh+='<div class="legend-item"><div class="legend-dot" style="background:'+col+'"></div><span class="legend-label">'+label+'</span><span class="legend-val">'+val+'</span></div>';
+    });
+    svg.innerHTML=h;
+    leg.innerHTML=lh;
+    svg.querySelectorAll('path[data-val]').forEach(p=>{
+        p.addEventListener('mouseenter',()=>{
+            tip.style.color=p.getAttribute('fill');
+            tip.textContent=p.dataset.label+' — '+p.dataset.val+' ('+p.dataset.pct+'%)';
+            tip.style.display='block';
+            p.style.opacity='0.75';
+        });
+        p.addEventListener('mouseleave',()=>{
+            tip.style.display='none';
+            tip.style.color='#ff6b6b';
+            p.style.opacity='1';
+        });
+        p.addEventListener('mousemove',e=>{
+            tip.style.left=(e.clientX+14)+'px';
+            tip.style.top=(e.clientY-36)+'px';
+        });
+    });
+}
+
+function drawList(elId, items, colorClass){
+    document.getElementById(elId).innerHTML=items.map(([label,count])=>
+        '<div class="list-item">'+
+        '<span class="list-label '+colorClass+'">'+label+'</span>'+
+        '<span class="list-count">'+count+'</span>'+
+        '</div>'
+    ).join("");
+}
+
+function drawLineChart(svgId, data){
+    const svg=document.getElementById(svgId);
+    if(!data||data.length===0){
+        svg.innerHTML='<text x="50%" y="50%" fill="#444d56" text-anchor="middle" font-size="9" font-family="Courier New">No data</text>';
+        return;
+    }
+    const W=480,H=160;
+    const pad={t:14,r:16,b:34,l:42};
+    const cW=W-pad.l-pad.r,cH=H-pad.t-pad.b;
+    const vals=data.map(d=>d[1]);
+    const maxV=Math.max(...vals)||1;
+    const xS=i=>pad.l+(data.length>1?(i/(data.length-1))*cW:cW/2);
+    const yS=v=>pad.t+cH-(v/maxV)*cH;
+    let h='';
+    [0,0.25,0.5,0.75,1].forEach(t=>{
+        const y=(pad.t+(1-t)*cH).toFixed(1);
+        h+='<line x1="'+pad.l+'" y1="'+y+'" x2="'+(W-pad.r)+'" y2="'+y+'" stroke="#ffffff07" stroke-width="1"/>';
+        h+='<text x="'+(pad.l-5)+'" y="'+(+y+3.5).toFixed(1)+'" fill="#444d56" font-size="8" font-family="Courier New" text-anchor="end">'+Math.round(t*maxV)+'</text>';
+    });
+    const pts=data.map((d,i)=>xS(i).toFixed(1)+','+yS(d[1]).toFixed(1));
+    h+='<polygon points="'+xS(0).toFixed(1)+','+(pad.t+cH).toFixed(1)+' '+pts.join(' ')+' '+xS(data.length-1).toFixed(1)+','+(pad.t+cH).toFixed(1)+'" fill="#ff444412"/>';
+    h+='<polyline points="'+pts.join(' ')+'" fill="none" stroke="#ff4444" stroke-width="1.5"/>';
+    data.forEach((d,i)=>{
+        const s=String(d[0]);
+        const lbl=s.length>=13?s.slice(11)+':00':s.length>=10?s.slice(5):s;
+        h+='<circle cx="'+xS(i).toFixed(1)+'" cy="'+yS(d[1]).toFixed(1)+'" r="4" fill="#ff4444" style="cursor:crosshair" data-lbl="'+lbl+'" data-val="'+d[1]+'"/>';
+    });
+    const step=Math.max(1,Math.ceil(data.length/7));
+    let lastLabelIdx=-1;
+    data.forEach((d,i)=>{
+        const isStep=i%step===0;
+        const isLast=i===data.length-1;
+        if(isLast&&!isStep&&lastLabelIdx>=0&&(i-lastLabelIdx)<Math.ceil(step*0.6))return;
+        if(isStep||isLast){
+            const s=String(d[0]);
+            const lbl=s.length>=13?s.slice(11)+':00':s.length>=10?s.slice(5):s;
+            h+='<text x="'+xS(i).toFixed(1)+'" y="'+(H-4)+'" fill="#444d56" font-size="7.5" font-family="Courier New" text-anchor="middle">'+lbl+'</text>';
+            lastLabelIdx=i;
+        }
+    });
+    svg.setAttribute('viewBox','0 0 '+W+' '+H);
+    svg.innerHTML=h;
+    svg.querySelectorAll('circle[data-val]').forEach(c=>{
+        c.addEventListener('mouseenter',()=>{
+            tip.style.color='#ff6b6b';
+            tip.textContent=c.dataset.lbl+' — '+c.dataset.val+' connections';
+            tip.style.display='block';
+            c.setAttribute('r','6');
+        });
+        c.addEventListener('mouseleave',()=>{
+            tip.style.display='none';
+            c.setAttribute('r','4');
+        });
+        c.addEventListener('mousemove',e=>{
+            tip.style.left=(e.clientX+14)+'px';
+            tip.style.top=(e.clientY-36)+'px';
+        });
+    });
+}
+
+async function refresh(){
+    try{
+        const d=await fetch("/api/stats").then(r=>r.json());
+        document.getElementById("s1").textContent=d.total_connections;
+        document.getElementById("s2").textContent=d.unique_ips;
+        document.getElementById("s3").textContent=d.total_commands;
+        document.getElementById("ts").textContent="UPDATED "+new Date().toLocaleTimeString();
+
+        map.eachLayer(l=>{if(l instanceof L.CircleMarker)map.removeLayer(l);});
+        d.attack_map.forEach(a=>{
+            if(!a.lat||!a.lon)return;
+            L.circleMarker([a.lat,a.lon],{radius:7,fillColor:"#ff4444",color:"#ff0000",weight:8,opacity:0.12,fillOpacity:0.9})
+            .bindPopup('<div style="font-family:monospace;font-size:12px;padding:6px 10px;color:#ff6b6b"><b>'+flag(a.country_code)+" "+a.ip+'</b><br><span style="color:#586069">'+( a.city?a.city+", ":"")+(a.country||"")+"</span></div>")
+            .addTo(map);
+        });
+
+        document.getElementById("af").innerHTML=d.recent_feed.map(e=>
+            '<div class="feed-item"><span class="flag">'+flag(e.country_code)+'</span><div><div class="feed-ip">'+e.ip+'</div><div class="feed-country">'+( e.country||"Unknown")+'</div></div><span class="feed-time">'+ft(e.timestamp)+"</span></div>").join("");
+
+        document.getElementById("cf").innerHTML=d.recent_commands.map(e=>
+            '<div class="cmd-item"><div class="cmd-text">$ '+e.command+'</div><div class="cmd-meta">'+flag(e.country_code)+" "+e.ip+" · "+ft(e.timestamp)+"</div></div>").join("");
+
+        drawList("tu", d.top_usernames, "red");
+        drawList("tp", d.top_passwords, "amber");
+        drawList("tc", d.country_counts, "blue");
+        drawPie("pie-u", "leg-u", d.top_usernames);
+        drawPie("pie-p", "leg-p", d.top_passwords);
+        drawPie("pie-c", "leg-c", d.country_counts);
+
+        drawList("tcmd", d.top_commands, "green");
+        drawPie("pie-cmd", "leg-cmd", d.top_commands);
+        drawLineChart("line-cot", d.connections_over_time);
+        drawList("tasn", d.top_asns, "amber");
+        drawPie("pie-asn", "leg-asn", d.top_asns);
+
+    }catch(e){console.error(e);}
+}
+refresh();
+setInterval(refresh,10000);
+</script>
+</body>
+</html>
